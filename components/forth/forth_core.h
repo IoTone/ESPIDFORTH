@@ -11,6 +11,8 @@
 #ifndef FORTH_CORE_H
 #define FORTH_CORE_H
 
+#include <stdint.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -27,6 +29,16 @@ int forth_eval(const char *text);
 // Get memory usage info
 int forth_heap_used(void);
 int forth_heap_free(void);
+
+// Register an external C function as a Forth primitive word.
+// Call after forth_init(), before forth_repl().
+// fn receives no args — use forth_push/forth_pop for stack access.
+typedef void (*forth_word_fn)(void);
+int forth_register_word(const char *name, forth_word_fn fn);
+
+// Stack access for external FFI words
+void forth_push(intptr_t value);
+intptr_t forth_pop(void);
 
 // Cleanup
 void forth_deinit(void);

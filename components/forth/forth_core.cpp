@@ -1240,6 +1240,20 @@ int forth_heap_free(void) {
     return heap_total - heap_used_bytes;
 }
 
+int forth_register_word(const char *name, forth_word_fn fn) {
+    if (dict_count >= MAX_WORDS) return -1;
+    add_primitive(name, fn);
+    return 0;
+}
+
+void forth_push(intptr_t value) {
+    push((cell_t)value);
+}
+
+intptr_t forth_pop(void) {
+    return (intptr_t)pop();
+}
+
 void forth_deinit(void) {
     if (heap_mem) {
         free(heap_mem);
