@@ -6,8 +6,8 @@
  * replaced with the full ESP32forth v7.0.8.0 engine once the Arduino
  * dependencies are stripped out.
  *
- * The raw ESP32forth source is preserved in ESP32forth.ino alongside
- * this file for reference during the porting effort.
+ * The raw ESP32forth source is preserved in third_party/esp32forth/
+ * (at the repository root) for reference during the porting effort.
  *
  * Supported words:
  *   Numbers (decimal, hex with 0x prefix)
