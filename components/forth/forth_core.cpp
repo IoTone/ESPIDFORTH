@@ -1331,6 +1331,40 @@ void forth_restore(const forth_savepoint_t *sp) {
 
 int forth_error_count(void) { return error_count; }
 
+int forth_eval_rollback(const char *text, size_t len,
+                        char *fail_line, size_t fail_cap) {
+    if (fail_line && fail_cap) fail_line[0] = '\0';
+    if (!text || !heap_mem) return -1;
+
+    /* Private copy: strtok_r mutates, and callers want the original intact
+     * so a successfully-applied bundle can be persisted verbatim. */
+    char *copy = (char *)malloc(len + 1);
+    if (!copy) return -1;
+    memcpy(copy, text, len);
+    copy[len] = '\0';
+
+    forth_savepoint_t sp;
+    forth_save(&sp);
+    int errs_before = error_count;
+
+    /* Line at a time: stopping at the FIRST bad line means the failure names
+     * the actual problem instead of the last line of the file. */
+    int rc = 0;
+    char *save = NULL;
+    for (char *line = strtok_r(copy, "\r\n", &save); line;
+         line = strtok_r(NULL, "\r\n", &save)) {
+        interpret_line(line);
+        if (error_count != errs_before) {
+            if (fail_line && fail_cap) snprintf(fail_line, fail_cap, "%s", line);
+            rc = 1;
+            break;
+        }
+    }
+    free(copy);
+    if (rc != 0) forth_restore(&sp);
+    return rc;
+}
+
 int forth_heap_used(void) {
     return heap_used_bytes;
 }
