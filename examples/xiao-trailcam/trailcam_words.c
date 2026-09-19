@@ -1,7 +1,7 @@
 /*
  * trailcam_words.c — an ESPIDFORTH vocabulary for the XIAO ESP32S3 Sense.
  *
- * Twelve words covering the camera, the microSD card and timing. Everything
+ * Fourteen words covering the camera, the microSD card and timing. Everything
  * above this line is capture *policy*, and policy belongs in Forth where you
  * can change it without a reflash. See policy.fs.
  *

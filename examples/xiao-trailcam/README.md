@@ -35,7 +35,7 @@ The adaptive trigger in `policy.fs` was in fact *designed that way* — see
 | `platformio-env.ini` | Build environment to append to `platformio.ini`. |
 | `sdkconfig.defaults.xiao_s3_sense` | Flash size, PSRAM-BSS, console, FATFS. |
 | `partitions.csv` | 3 MB app — the camera driver needs the room. |
-| `idf_component.yml` | Pulls `espressif/esp32-camera`. |
+| `idf_component.yml` | Pulls `espressif/esp32-camera` (`^2.0.0`). |
 
 ## Build
 
@@ -67,6 +67,9 @@ forth_repl(console_getchar, console_putchar);
 ```
 
 Then `pio run -e xiao_s3_sense -t upload -t monitor`.
+
+Verified with **esp32-camera 2.1.7** and **esp_jpeg 1.3.1** (pulled
+transitively) under ESP-IDF 5.3.1.
 
 Measured on the real board: **394 KB flash** (12.5% of a 3 MB app partition)
 and **27.8 KB internal RAM** — low because the Forth dictionary and code arrays
