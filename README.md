@@ -1,5 +1,7 @@
 # ESPIDFORTH
 
+**[Documentation site](https://iotone.github.io/ESPIDFORTH/)** · **[Tutorials](https://iotone.github.io/ESPIDFORTH/tutorials.html)** · **[Runnable examples](examples/)**
+
 ESP32FORTH ported to ESP-IDF via PlatformIO. Originally developed as Phase 2 of the
 [MagNET](https://github.com/IoTone/ProjectMagNET) Hive AI prototype; extracted into this
 standalone repository (full history preserved) in August 2026 so that all consumers —

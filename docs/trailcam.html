@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Trailcam on a XIAO ESP32S3</title>
+<meta name="description" content="A camera whose shutter policy lives in Forth and can be rewritten while it runs — on a XIAO ESP32S3 Sense with camera and microSD.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<nav class="top">
+  <div class="wrap">
+    <a class="brand" href="index.html">ESPIDFORTH<span class="dot">.</span></a>
+    <a class="lnk" href="index.html#start">Quick start</a>
+    <a class="lnk" href="index.html#why">Why Forth</a>
+    <a class="lnk" href="tutorials.html">Tutorials</a>
+    <a class="lnk" href="trailcam.html" aria-current="page">Trailcam</a>
+    <a class="lnk" href="index.html#learn">References</a>
+    <a class="lnk" href="https://github.com/IoTone/ESPIDFORTH">GitHub</a>
+  </div>
+</nav>
+
+<div class="wrap">
+
+<header class="hero">
+  <p class="eyebrow">Project · XIAO ESP32S3 Sense · tested on hardware</p>
+  <h1>A camera whose shutter policy you can rewrite while it is watching.</h1>
+  <p class="standfirst">Fourteen words of C for the camera and the SD card. A page of Forth for when to actually press the shutter — the part you get wrong, and the part you can now fix without unmounting anything. The trigger in this sample was redesigned at the prompt, against a live sensor, after the first design failed on real hardware.</p>
+  <div class="cta-row">
+    <a class="btn solid" href="https://github.com/IoTone/ESPIDFORTH/tree/main/examples/xiao-trailcam">Source</a>
+    <a class="btn ghost" href="tutorials.html">Tutorials</a>
+  </div>
+</header>
+
+<section>
+  <h2>The problem this is really about</h2>
+  <p class="lede">Capture policy is the part of a trail camera you get wrong.</p>
+  <p>How long between frames. What counts as motion worth keeping. What to do when the card is nearly full. Every one of those is a number you discover by watching the thing run <em>in the place it will live</em> — and every one of them normally costs an edit, a rebuild, a reflash, and a camera that has to come off the tree and back to your bench.</p>
+  <p>Here each one costs a line of typing, with the camera still pointed at the scene.</p>
+
+  <div class="note">
+    <p><b>Hardware:</b> Seeed Studio XIAO ESP32S3 <b>Sense</b> — camera and microSD on the expansion board, 8 MB octal PSRAM, native USB console. The sensor is an OV2640 on older units and an OV5640 on newer ones; the driver probes and the pin map is the same either way. Measured on the test board: <b>394 KB flash</b>, <b>27.8 KB internal RAM</b>, ~21.4 KB per JPEG at 800×600, <b>872 µs</b> per capture.</p>
+  </div>
+</section>
+
+<section>
+  <h2>The split</h2>
+  <p class="lede">Mechanism in C, policy in Forth. The line between them is the whole design.</p>
+
+  <div class="tw">
+  <table>
+    <thead><tr><th>Layer</th><th>Contents</th><th>Changes how often</th></tr></thead>
+    <tbody>
+      <tr><td><b>C vocabulary</b><br><span class="mono" style="font-size:12px">trailcam_words.c</span></td><td>14 words: capture a frame, write a file, read free space, dump a frame over serial, wait</td><td>Once. It is mechanism, and mechanism is not what you got wrong.</td></tr>
+      <tr><td class="hi"><b>Forth policy</b><br><span class="mono" style="font-size:12px">policy.fs</span></td><td>Interval, trigger threshold, disk guard, counters, calibration helper</td><td class="hi">Constantly, at the prompt, while it runs</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+<pre>cam-snap     ( -- len )     capture a JPEG, hold it, push byte length
+cam-release  ( -- )         return the held frame to the driver pool
+cam-quality  ( n -- )       10 (best) .. 63 (worst)
+cam-size     ( n -- )       5=QVGA 8=VGA 9=SVGA 10=XGA 13=UXGA
+cam-dims     ( -- w h )     dimensions of the held frame
+cam-dump     ( -- )         base64 the held frame to the console
+sd-write     ( n -- flag )  write held frame to /sdcard/IMG_&lt;n&gt;.JPG
+sd-free      ( -- mb )      free megabytes
+sd-count     ( -- n )       .JPG files on the card
+sd-ok?       ( -- flag )    is the card mounted
+sd-mount     ( khz -- flag ) try mounting at a given SPI clock
+sd-info      ( -- )         dump what the card reports about itself
+ms           ( n -- )       delay
+us           ( -- t )       microseconds since boot</pre>
+
+  <p><code>cam-snap</code> holds the frame until you write it or release it. Policy decides which — which is precisely why <code>sd-write</code> does not release on your behalf.</p>
+</section>
+
+<section>
+  <h2>The trick: JPEG size <em>is</em> the motion sensor</h2>
+  <p class="lede">No PIR, no frame differencing, no extra silicon.</p>
+  <p>A JPEG of a static scene compresses small. Something walking into frame adds edges and texture; detail rises, and the encoded size rises with it. The encoder has already done that work by the time <code>cam-snap</code> returns a length — reading the number costs nothing.</p>
+  <p>That part is true. What is <em>not</em> true is the obvious next step.</p>
+
+  <h3>The first design, and why the hardware killed it</h3>
+  <p>Measure the quiet scene once, pick a floor above it, keep anything bigger. On the bench that looked fine. On the board it fell apart in minutes. Here are two measurements of the same motionless scene, a few minutes apart:</p>
+
+  <div class="tw">
+  <table>
+    <thead><tr><th>Measurement</th><th class="num">Range (bytes)</th><th class="num">Spread</th></tr></thead>
+    <tbody>
+      <tr><td>First</td><td class="num">21296 – 21404</td><td class="num">0.5%</td></tr>
+      <tr><td>A few minutes later</td><td class="num">21395 – 23086</td><td class="num"><b>7.8%</b></td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <p>The sensor's auto-exposure and gain drift, and the baseline drifts with them. A floor set at 22000 — comfortably clear of the first band — fired on <b>10 out of 10</b> frames once the scene had drifted up underneath it. A fixed threshold is not a motion detector; it is a slowly-arming trip wire.</p>
+
+  <div class="warnbox">
+    <p>This is the finding worth taking away from the page. The simulator that verified the Forth before flashing modelled a stable baseline, because that is what the idea assumes. Only the sensor knew otherwise.</p>
+  </div>
+
+  <h3>The design the board argued for</h3>
+  <p>The baseline has to follow the scene. An integer moving average with roughly an eight-frame time constant, and a trigger set as a percentage above it:</p>
+
+<pre>: learn  ( n -- )
+  base @ dup 8 / - swap 8 / + base ! ;
+
+: motion?  ( n -- n flag )
+  dup 100 *  base @ 100 margin @ + *  &gt; ;</pre>
+
+  <p>Compared as <code>n*100 &gt; base*(100+margin)</code> to stay in integers — at ~17 KB frames both sides sit near 1.7 million, well inside a 32-bit cell.</p>
+
+  <h3>So how well does it actually detect a person?</h3>
+  <p class="lede">Well enough to be useful, and less well than the idea promises.</p>
+  <p>The board has no display, so the honest way to answer this was to add a fourteenth word — <code>cam-dump</code>, which base64s the held frame to the console — recover the actual JPEGs, and look at them.</p>
+
+  <div class="tw">
+  <table>
+    <thead><tr><th>Scene</th><th class="num">Frame size</th><th>Confirmed by</th></tr></thead>
+    <tbody>
+      <tr><td>Empty — ceiling, wall, one rail</td><td class="num"><b>16777</b> median, 0.4% spread over 20 frames</td><td>recovered image</td></tr>
+      <tr><td class="hi">Hand covering ~40% of frame</td><td class="hi num"><b>19166</b> — <b>+14.2%</b></td><td class="hi">recovered image</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <p>Both real values fed through the real predicate, on the device:</p>
+
+<pre class="repl"><span class="p">ok&gt;</span> 16777 base !  10 margin !
+<span class="p">ok&gt;</span> 16733 motion? . drop   <span class="c">\ empty-scene minimum</span>
+<span class="o">0</span>
+<span class="p">ok&gt;</span> 19166 motion? . drop   <span class="c">\ measured hand frame</span>
+<span class="o">-1</span>
+<span class="p">ok&gt;</span> 15 margin !  19166 motion? . drop
+<span class="o">0</span>                        <span class="c">\ correctly above the hand's +14.2%</span></pre>
+
+  <p>So the usable <code>margin</code> window for this scene is roughly <b>1% to 14%</b>. That is narrower than it looks, because the signal tracks <em>texture</em>, not area. A smooth, evenly-lit hand against a plain wall swaps one low-detail region for another and barely moves the encoder. A textured subject against a flat background gives far more headroom — and a flat subject against a busy background makes the frame <em>smaller</em>, which this one-sided test will never see.</p>
+
+  <div class="warnbox">
+    <p>Run <code>sizes</code> on your own scene with your own subject before trusting any number on this page. The technique is real; the margin is scene-specific and can be nearly zero.</p>
+  </div>
+
+  <h3>Learn only on quiet frames</h3>
+  <p>The first moving average learned on <em>every</em> frame. With an eight-frame time constant, a subject that enters and stays becomes the new baseline in about three seconds — the camera notices the arrival and then goes blind to it. <code>step</code> now calls <code>learn</code> only in the else branch:</p>
+
+<pre>: step
+  cam-snap
+  motion?
+  if   save-frame drop     <span class="c">\ triggered: do NOT learn</span>
+  else +dropped   learn    <span class="c">\ quiet: track the scene</span>
+  then
+  cam-release ;</pre>
+</section>
+
+<section>
+  <h2>The part that matters: none of that needed a reflash</h2>
+  <p>The fixed threshold was diagnosed, the moving average was written, the margin was tuned, and the whole thing was re-verified against a live sensor — at the <code>ok&gt;</code> prompt, with the camera never stopping. The firmware on the board is the same image throughout.</p>
+  <p>That is the argument for this project, and it is also how the bug was found. A build-flash-observe loop would have shown the same drift eventually; it just would have taken an afternoon instead of ten minutes, and the temptation would have been to nudge the constant rather than change the design.</p>
+
+  <p>The same mechanism is what <a href="tutorials.html#t10">tutorial 10</a> teaches and what MagNET's hive uses to push signed role bundles to nodes it cannot reach. Here <code>watch</code> and <code>guarded</code> call <code>step</code> <b>by name</b> through the dictionary, so redefining <code>step</code> changes a loop that is already running.</p>
+
+<pre><span class="c">\ stop filling a card that is nearly full</span>
+: room?  ( -- flag )  sd-free 20 &gt; ;
+
+: guarded  ( n -- )
+  0 do
+    room? if step then
+    150 ms
+  loop ;</pre>
+  <p class="tut-meta" style="margin-top:10px">This engine has no <code>LEAVE</code>, so the loop runs its full count and simply stops capturing once the card is low.</p>
+</section>
+
+<section>
+  <h2>Gotchas worth knowing before you wire it up</h2>
+
+  <div class="warnbox">
+    <p><b>GPIO21 is both the user LED and the SD chip select.</b> Seeed's own pin table lists that one pin under both names. You cannot use the LED as a status light while the card is mounted — driving it low asserts chip select. It will flicker on every write, and that is normal, not a fault. This sample never touches it; for a status light, use a free pin (D0–D5).</p>
+  </div>
+
+  <ul class="plain">
+    <li><b>D11 and D12 are reserved for the PDM microphone</b> on the Sense board. Unused here, but do not reach for them.</li>
+    <li><b>No <code>LEAVE</code>.</b> The engine cannot exit a <code>do</code> loop early, so <code>guarded</code> runs its full count and simply stops writing once the card is low.</li>
+    <li><b>No <code>+!</code>.</b> Increments are spelled <code>x @ 1 + x !</code>.</li>
+    <li><b><code>us</code> wraps about every 71 minutes</b> — a cell is 32 bits, <code>esp_timer_get_time()</code> is 64. Good for timing a word, useless as a clock.</li>
+    <li><b>Format the card FAT32</b> before first use, and if it mounts but throws CRC errors on the first large write, drop <code>host.max_freq_khz</code> from 20 MHz to <code>10000</code>.</li>
+  </ul>
+</section>
+
+<section>
+  <h2>What is verified, and what is not</h2>
+  <p class="lede">Run on a XIAO ESP32S3 Sense, 2026-09-19 — ESP32-S3 rev v0.2, OV5640, ESP-IDF 5.3.1.</p>
+
+  <div class="tw">
+  <table>
+    <thead><tr><th>Check</th><th>Result</th></tr></thead>
+    <tbody>
+      <tr><td>Engine self-test on the board</td><td class="hi"><b>58 passed, 0 failed</b> — 20.3 ms</td></tr>
+      <tr><td>FFI suite</td><td class="hi"><b>8 passed, 0 failed</b>, MAC matching the bootloader</td></tr>
+      <tr><td>Camera capture</td><td>~21.4 KB at 800×600, <b>872 µs</b> per frame</td></tr>
+      <tr><td><code>policy.fs</code> over the serial link</td><td class="hi"><b>0 errors</b>, 98 dictionary entries</td></tr>
+      <tr><td>Adaptive trigger</td><td class="hi">0 false positives in 40 live frames; fires on a step change</td></tr>
+      <tr><td>Real motion</td><td class="hi">Hand measures <b>+14.2%</b> against a 0.4% noise floor; predicate fires at <code>margin</code> 10</td></tr>
+      <tr><td><code>cam-dump</code></td><td class="hi">19166-byte frame recovered over serial — valid JFIF 800×600</td></tr>
+      <tr><td>Build size</td><td>394 KB flash, 27.8 KB internal RAM</td></tr>
+      <tr><td>microSD</td><td class="hi">Mounts at 20 MHz — <code>SD02G, SDSC, 1889 MB, sector_size=512</code></td></tr>
+      <tr><td><code>sd-write</code> / <code>sd-free</code> / <code>sd-count</code></td><td class="hi">Verified on the card — JPEGs land, counters track</td></tr>
+      <tr><td>Capture + write</td><td>140–202 ms, mean ~160 ms — <b>180× the capture alone</b></td></tr>
+      <tr><td>Full <code>policy.fs</code> pipeline</td><td class="hi">12 forced captures written; 20 consecutive frames correctly dropped</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <p>One caveat on the motion figure. It comes from two stills — one with a hand in frame, one without, both visually confirmed — plus the predicate evaluated on those real values. It does <em>not</em> come from a single continuous run that caught a hand crossing the lens: four live windows were run and none happened to contain one. The sustained-trigger behaviour of the learn-freeze fix is therefore reasoned from the measurements rather than observed directly.</p>
+
+  <p>Two real bugs were found on the way. ESP-IDF defaults to <code>CONFIG_FATFS_SECTOR_4096</code>, sized for wear-levelling on internal flash, which compiles FATFS with a fixed 4096-byte sector and makes <em>every</em> SD card fail to mount with <code>FR_NO_FILESYSTEM (13)</code> — this card reports <code>sector_size=512</code>, so it could never have worked. <code>sdkconfig.defaults</code> now sets <code>CONFIG_FATFS_SECTOR_512=y</code>.</p>
+
+  <p>And <code>shot#</code> restarts at zero whenever <code>policy.fs</code> is reloaded, so <code>sd-write</code> silently overwrites images already on the card. Seed it past what is there — <code>sd-count shot# !</code> — before any real deployment.</p>
+
+  <div class="warnbox">
+    <p><b>Budget for the write, not the capture.</b> A frame costs 872 µs to grab and another ~160 ms to commit to the card. That caps sustained capture near six frames per second and makes the <code>150 ms</code> loop delay comparable to a single write.</p>
+  </div>
+</section>
+
+<footer>
+  <p>Source: <a href="https://github.com/IoTone/ESPIDFORTH/tree/main/examples/xiao-trailcam">examples/xiao-trailcam</a>. ESPIDFORTH is Apache-2.0, © IoTone, Inc.</p>
+</footer>
+
+</div>
+</body>
+</html>

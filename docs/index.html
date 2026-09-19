@@ -1,0 +1,290 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ESPIDFORTH — an interactive Forth for ESP-IDF</title>
+<meta name="description" content="A Forth interpreter running natively on ESP-IDF. Change how the board behaves without a rebuild, a reflash, or a reboot.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<nav class="top">
+  <div class="wrap">
+    <a class="brand" href="index.html">ESPIDFORTH<span class="dot">.</span></a>
+    <a class="lnk" href="#start">Quick start</a>
+    <a class="lnk" href="#why">Why Forth</a>
+    <a class="lnk" href="#uses">Use cases</a>
+    <a class="lnk" href="#usedby">Used by</a>
+    <a class="lnk" href="tutorials.html">Tutorials</a>
+    <a class="lnk" href="trailcam.html">Trailcam</a>
+    <a class="lnk" href="#learn">References</a>
+    <a class="lnk" href="https://github.com/IoTone/ESPIDFORTH">GitHub</a>
+  </div>
+</nav>
+
+<div class="wrap">
+
+<header class="hero">
+  <p class="eyebrow">Apache-2.0 · ESP32 · ESP32-S3 · ESP32-C3 · ESP32-C6</p>
+  <h1>Change what the board does without reflashing it.</h1>
+  <p class="standfirst">ESPIDFORTH is a Forth interpreter running natively on ESP-IDF — no Arduino layer. Open a serial console and the firmware becomes editable at runtime: define a word, run it, redefine it, roll it back.</p>
+  <div class="cta-row">
+    <a class="btn solid" href="#start">Get started</a>
+    <a class="btn ghost" href="tutorials.html">10 tutorials</a>
+  </div>
+
+<pre class="repl"><span class="c">============================================
+  ESPIDFORTH v0.5.0
+  Build: Sep 19 2026 13:02:41
+============================================</span>
+<span class="o">No PSRAM, using 100 KB Forth heap
+Forth engine initialized.</span>
+
+<span class="p">ok&gt;</span> 2 3 + .
+<span class="o">5</span>
+<span class="p">ok&gt;</span> : square dup * ;
+<span class="p">ok&gt;</span> 12 square .
+<span class="o">144</span>
+<span class="p">ok&gt;</span> : square dup dup * * ;   <span class="c">\ redefine it, live</span>
+<span class="p">ok&gt;</span> 12 square .
+<span class="o">1728</span>
+<span class="p">ok&gt;</span> chip-info
+<span class="o">Chip: ESP32-C3 rev 4, 1 core(s)
+Features: WiFi BLE
+MAC: 12:34:56:78:9a:bc
+Free heap: 198432 bytes</span>
+<span class="p">ok&gt;</span> </pre>
+</header>
+
+<section id="start">
+  <h2>Quick start</h2>
+  <p class="lede">You need PlatformIO. Pick the environment that matches your board; every one of the six builds in CI.</p>
+
+<pre><span class="c"># clone and flash a C3 devkit, then attach the monitor</span>
+git clone https://github.com/IoTone/ESPIDFORTH.git
+cd ESPIDFORTH
+pio run -e esp32c3 -t upload -t monitor
+
+<span class="c"># other targets</span>
+pio run -e esp32s3 -t upload -t monitor    <span class="c"># S3, PSRAM, 512 KB dictionary</span>
+pio run -e esp32c6 -t upload -t monitor
+pio run -e esp32   -t upload -t monitor    <span class="c"># classic Xtensa, UART0 console</span>
+
+<span class="c"># _release variants strip the on-device test suites (~5.5 KB)</span>
+pio run -e esp32c3_release -t upload</pre>
+
+  <p>When the monitor attaches you get an <code>ok&gt;</code> prompt. Type <code>words</code> to list the vocabulary, <code>test</code> to run 58 built-in assertions on the board, <code>chip-info</code> to see what you are sitting on, and <code>bye</code> to leave.</p>
+
+  <div class="note">
+    <p><b>Using it as a component.</b> <code>components/forth/</code> is a self-contained ESP-IDF component with no dependencies beyond the SDK. Copy it in, give it two character-I/O callbacks, and call <code>forth_init()</code> — the whole public API is fourteen functions in one header.</p>
+  </div>
+</section>
+
+<section id="why">
+  <h2>Why this instead of plain C or MicroPython</h2>
+  <p class="lede">All three run on the same silicon. They differ in what a change costs you and what you give up to get it.</p>
+
+  <div class="tw">
+  <table>
+    <thead>
+      <tr>
+        <th></th>
+        <th>ESP-IDF in C</th>
+        <th>MicroPython</th>
+        <th class="hi">ESPIDFORTH</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><b>Cost of one change</b></td>
+        <td>Edit, rebuild, flash, reboot — tens of seconds, and you lose all runtime state</td>
+        <td>Paste at the REPL; instant</td>
+        <td class="hi">Type at the REPL; instant</td>
+      </tr>
+      <tr>
+        <td><b>Flash footprint</b></td>
+        <td>Only what you write</td>
+        <td>~1.5&nbsp;MB for a standard build<sup>†</sup></td>
+        <td class="hi num">183 KB dev · 178 KB release</td>
+      </tr>
+      <tr>
+        <td><b>Static RAM</b></td>
+        <td>Yours to budget</td>
+        <td>Interpreter + GC heap, ~100&nbsp;KB and up<sup>†</sup></td>
+        <td class="hi num">67 KB</td>
+      </tr>
+      <tr>
+        <td><b>Redefining live behaviour</b></td>
+        <td>Not without a reflash</td>
+        <td>Rebind a name; no rollback primitive</td>
+        <td class="hi">A dictionary savepoint rolls a bad patch back word-for-word</td>
+      </tr>
+      <tr>
+        <td><b>Timing determinism</b></td>
+        <td>Fully deterministic</td>
+        <td>Garbage collector can pause you</td>
+        <td class="hi">No GC — fixed dictionary and a bump allocator</td>
+      </tr>
+      <tr>
+        <td><b>Reaching an ESP-IDF API</b></td>
+        <td>Call it</td>
+        <td>Write a C module, rebuild the firmware</td>
+        <td class="hi">A five-line C wrapper, registered at boot</td>
+      </tr>
+      <tr>
+        <td><b>Floating point</b></td>
+        <td>Full</td>
+        <td>Full</td>
+        <td class="hi">None. Integer cells only</td>
+      </tr>
+      <tr>
+        <td><b>Library ecosystem</b></td>
+        <td>The entire vendor SDK</td>
+        <td>Large — drivers for most common parts</td>
+        <td class="hi">Essentially none. You write the wrappers</td>
+      </tr>
+      <tr>
+        <td><b>Learning curve</b></td>
+        <td>C — familiar</td>
+        <td>Python — familiar</td>
+        <td class="hi">Postfix and an explicit stack — unfamiliar to most</td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+  <p style="font-size:14px;color:var(--muted);max-width:62ch">
+    <sup>†</sup> ESPIDFORTH figures are measured from this repository at v0.5.0 (<code>esp32c3</code> and <code>esp32c3_release</code>). MicroPython figures are approximate for a standard ESP32 port and will vary with the build.
+  </p>
+
+  <h3>The honest version</h3>
+  <p>ESPIDFORTH wins on exactly one axis and it is a narrow one: <b>the cost of changing a running system</b>. If the board is on your bench and you are trying to find out what a sensor actually does, or it is deployed somewhere inconvenient and you need to adjust its behaviour without shipping a firmware image, that axis is the whole game.</p>
+  <p>If you need floating-point maths, an I²C driver someone else already wrote, or a team that can read the code without learning a new evaluation order, you want MicroPython or C. Those are good answers and this project does not pretend otherwise.</p>
+
+  <div class="warnbox">
+    <p><b>Current engine is a stub.</b> The interpreter in <code>components/forth/</code> is an original implementation of the core ANS word set written for this project — roughly 90 words. The full ESP32forth v7.0.8.0 engine is vendored in <code>third_party/</code> and will replace it once its Arduino dependencies are stripped. Everything on this site is written against the stub, which is what ships today.</p>
+  </div>
+</section>
+
+<section id="uses">
+  <h2>What people use it for</h2>
+
+  <div class="grid2">
+    <div class="uc">
+      <h3>Bench bring-up</h3>
+      <p>New board, undocumented peripheral. Poke it from the prompt until you understand it, then write the C once you know what you are writing.</p>
+    </div>
+    <div class="uc">
+      <h3>Field-patchable behaviour</h3>
+      <p>Ship one firmware image, then send small Forth bundles over the air. <code>forth_eval_rollback()</code> applies a bundle line by line and reverts the whole thing if any line fails.</p>
+    </div>
+    <div class="uc">
+      <h3>Manufacturing test fixtures</h3>
+      <p>Per-unit test sequences as text over the serial link, changeable without re-flashing the fixture between product revisions.</p>
+    </div>
+    <div class="uc">
+      <h3>Very small nodes</h3>
+      <p>67 KB of RAM and 178 KB of flash leaves room on parts where a Python runtime simply will not fit.</p>
+    </div>
+    <div class="uc">
+      <h3>Teaching</h3>
+      <p>The entire language — parser, compiler, interpreter — is one readable C++ file. Students can modify the language itself in an afternoon.</p>
+    </div>
+    <div class="uc">
+      <h3>Embedding in a larger firmware</h3>
+      <p>The engine is a component, not an application. Register your own words and drive it from whatever already owns your main loop.</p>
+    </div>
+  </div>
+</section>
+
+<section id="usedby">
+  <h2>Projects built on it</h2>
+  <p class="lede">ESPIDFORTH was extracted from <a href="https://github.com/IoTone/ProjectMagNET">Project MagNET</a>, an IoT data-sync and control platform, and MagNET remains its largest consumer. Most of the engine's API exists because one of these asked for it.</p>
+
+  <h3>Hive AI — <span class="mono" style="font-size:0.8em">reference-designs/MagNET_M5DialFiddlerCrab</span></h3>
+  <p>A swarm of small ESP32 nodes under a coordinating "ruler". A node joins the hive, requests a role, and is sent a <b>role bundle</b> — a signed JSON envelope carrying Forth source, typically under 2&nbsp;KB, that the node installs and runs without reflashing. That is the mechanism <a href="tutorials.html#t10">tutorial 10</a> teaches, in production.</p>
+
+  <div class="tw">
+  <table>
+    <thead><tr><th>Measure</th><th>Scale</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td>Reference designs on the engine</td><td class="num">17</td><td>Cameras, environment sensors, LED matrices, audio, mmWave presence, e-ink scribes</td></tr>
+      <tr><td>Registered FFI words</td><td class="num">170</td><td>Against ~90 in the stock engine — the wrapper pattern scales</td></tr>
+      <tr><td>Typical role bundle</td><td class="num">&lt; 2 KB</td><td>Fits one hive <code>KV_DATA</code> frame</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <p>Vocabularies are built per device from the same five-line wrapper shown in <a href="tutorials.html#t8">tutorial 8</a> — <code>cam-snap</code>, <code>temp?</code>, <code>ws-px</code>, <code>mr60-status</code>, <code>scribe-store</code>. A bundle written against the capabilities a node advertises runs on any chip family that offers them.</p>
+
+  <h3>Hanasu — <span class="mono" style="font-size:0.8em">reference-designs/MagNET_Thread_COaP_hanasu_esp32c6</span></h3>
+  <p>話す — peer-to-peer mesh chat over Thread and CoAP on the ESP32-C6, with no border router and no WAN. Its serial link is <b>dual-mode</b>: a line is either a structured HCP command or raw Forth, dispatched on the fly. That is why <code>forth_set_io()</code> exists — the link owns the input stream and drives the engine line by line with <code>forth_eval()</code> rather than surrendering to the blocking REPL.</p>
+  <p>Hanasu also shows the engine's portability boundary. It carries the role-bundle component but <em>not</em> the hive-KV words, which were deliberately split out so the bundle engine has no WiFi dependency and ports to Thread. Thirty-one <code>mn-*</code> words cover mesh state, peers, time sync and chat.</p>
+
+  <div class="note">
+    <p><b>A nice piece of Forth reasoning from that project:</b> <code>botmode</code> is a colon definition rather than an FFI primitive, because an FFI word cannot distinguish an empty stack from a pushed <code>0</code> — this engine's <code>pop()</code> returns 0 on underflow, so a bare <code>botmode</code> would read as <code>0 botmode</code> and arm bot 0. <code>depth</code> can see the caller's stack and disambiguate:</p>
+<pre style="margin-top:12px">: botmode  depth 0&gt; if mn-bot! else mn-bots then ;</pre>
+  </div>
+
+  <h3>What these consumers drove into the API</h3>
+  <ul class="plain">
+    <li><code>forth_eval_rollback()</code> (0.4.0) — because a role bundle arriving over the air must apply completely or not at all.</li>
+    <li><code>forth_word_exists()</code> (0.5.0) — so a host can ask "did that bundle define <code>role-tick</code>?" without evaluating anything.</li>
+    <li><code>forth_error_count()</code> — because <code>forth_eval()</code> returns 0 whether or not the text made sense.</li>
+    <li>The recursive mutex (0.5.0) — a console REPL, a bundle installer and a role-tick timer all call in from different tasks.</li>
+    <li><code>forth_set_io()</code> — Hanasu's dual-mode link, as above.</li>
+  </ul>
+</section>
+
+<section id="learn">
+  <h2>Learning references</h2>
+  <p class="lede">Forth is old, small, and unusually well documented. These are the sources worth your time, starting with the project this one is built from.</p>
+
+  <h3>The project we forked</h3>
+  <dl class="refs">
+    <dt>ESP32forth / µEforth — Brad Nelson (flagxor)</dt>
+    <dd>The Arduino-hosted Forth for ESP32 that ESPIDFORTH exists to port. We vendor it unmodified at revision <code>ffef117</code> (v7.0.8.0) in <code>third_party/esp32forth/</code>, under Apache-2.0, as the reference for the ongoing port. If you want a mature, feature-complete ESP32 Forth <em>today</em>, use this rather than waiting for us.
+      <div class="u"><a href="https://github.com/flagxor/ueforth">github.com/flagxor/ueforth</a> · <a href="https://esp32forth.appspot.com/">esp32forth.appspot.com</a></div>
+    </dd>
+  </dl>
+
+  <h3>Learning the language</h3>
+  <dl class="refs">
+    <dt>Starting Forth — Leo Brodie</dt>
+    <dd>The book nearly everyone learns from, free online. Chapters 1–5 cover everything in our tutorials and then some. Written for a 1980s Forth, so ignore the parts about block editors.
+      <div class="u"><a href="https://www.forth.com/starting-forth/">forth.com/starting-forth</a></div>
+    </dd>
+    <dt>Thinking Forth — Leo Brodie</dt>
+    <dd>Not about syntax — about how to decompose a problem into small words. It is one of the better books on software design generally, and it is free.
+      <div class="u"><a href="https://thinking-forth.sourceforge.net/">thinking-forth.sourceforge.net</a></div>
+    </dd>
+    <dt>The Forth Standard</dt>
+    <dd>Reference for standard word names and stack effects. Useful for checking what a word is <em>supposed</em> to do; note that our stub implements a subset.
+      <div class="u"><a href="https://forth-standard.org/">forth-standard.org</a></div>
+    </dd>
+  </dl>
+
+  <h3>The platform underneath</h3>
+  <dl class="refs">
+    <dt>ESP-IDF Programming Guide</dt>
+    <dd>Where you look up the API you are about to wrap in a Forth word — GPIO, ADC, I²C, timers, Wi-Fi.
+      <div class="u"><a href="https://docs.espressif.com/projects/esp-idf/en/stable/">docs.espressif.com/projects/esp-idf</a></div>
+    </dd>
+    <dt>This repository</dt>
+    <dd><code>components/forth/forth_core.h</code> is the API surface and is heavily commented; <code>forth_core.cpp</code> is the whole language. <code>third_party/esp32forth/PROVENANCE.md</code> records the upstream revision and licence handling.
+      <div class="u"><a href="https://github.com/IoTone/ESPIDFORTH">github.com/IoTone/ESPIDFORTH</a></div>
+    </dd>
+  </dl>
+</section>
+
+<footer>
+  <p>ESPIDFORTH is Apache-2.0, © IoTone, Inc. It includes ESP32forth v7.0.8.0 (µEforth) by Brad Nelson, also Apache-2.0, preserved unmodified in <code>third_party/esp32forth/</code>; see NOTICE and PROVENANCE.md.</p>
+  <p>Figures on this page were measured from this repository at v0.5.0. Sample code was executed against the engine before publication.</p>
+</footer>
+
+</div>
+</body>
+</html>

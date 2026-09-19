@@ -1,0 +1,22 @@
+# XIAO ESP32S3 Sense — 8 MB flash, 8 MB octal PSRAM, OV2640/OV5640 + microSD.
+
+CONFIG_ESPTOOLPY_FLASHSIZE_8MB=y
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+
+# The camera driver wants a large contiguous internal DMA region for the
+# capture ring. Keeping the Forth dictionary and code arrays in PSRAM (via
+# EXT_RAM_BSS_ATTR, already in forth_core.cpp) is what frees it up.
+CONFIG_SPIRAM_ALLOW_BSS_SEG_EXTERNAL_MEMORY=y
+
+# Console over the native USB port.
+CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
+
+# FATFS: long file names on the heap, and UTF-8 so non-ASCII names round-trip.
+# SD cards use 512-byte sectors. ESP-IDF defaults FATFS to 4096 (sized for
+# wear-levelling on internal flash), which compiles FF_MIN_SS==FF_MAX_SS==4096
+# and makes every SD card mount fail with FR_NO_FILESYSTEM (13).
+CONFIG_FATFS_SECTOR_512=y
+
+CONFIG_FATFS_LFN_HEAP=y
+CONFIG_FATFS_API_ENCODING_UTF_8=y

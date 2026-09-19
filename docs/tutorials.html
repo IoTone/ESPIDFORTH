@@ -1,0 +1,548 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ESPIDFORTH Tutorials</title>
+<meta name="description" content="Ten tutorials for ESPIDFORTH, from the stack to hot-swapping a running behaviour over the air.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<nav class="top">
+  <div class="wrap">
+    <a class="brand" href="index.html">ESPIDFORTH<span class="dot">.</span></a>
+    <a class="lnk" href="index.html#start">Quick start</a>
+    <a class="lnk" href="index.html#why">Why Forth</a>
+    <a class="lnk" href="index.html#uses">Use cases</a>
+    <a class="lnk" href="tutorials.html" aria-current="page">Tutorials</a>
+    <a class="lnk" href="trailcam.html">Trailcam</a>
+    <a class="lnk" href="index.html#learn">References</a>
+    <a class="lnk" href="https://github.com/IoTone/ESPIDFORTH">GitHub</a>
+  </div>
+</nav>
+
+<div class="wrap">
+
+<header class="hero">
+  <p class="eyebrow">Tutorials · v0.5.0</p>
+  <h1>From the stack to hot-swapping a live behaviour.</h1>
+  <p class="standfirst">Ten tutorials in two halves. The first six run verbatim on the firmware you just flashed. The last four extend the engine with your own words — which is what the project is actually for.</p>
+
+  <div class="toc">
+    <ol>
+      <li><a href="#t1">The stack, and why there are no parentheses</a></li>
+      <li><a href="#t2">Defining words</a></li>
+      <li><a href="#t3">Conditionals and loops</a></li>
+      <li><a href="#t4">Variables, constants and memory</a></li>
+      <li><a href="#t5">Interrogating the chip</a></li>
+      <li><a href="#t6">Number bases, strings and stack surgery</a></li>
+      <li><a href="#t7">Your first FFI word: <code>ms</code> and <code>us</code></a></li>
+      <li><a href="#t8">GPIO — blinking an LED from the prompt</a></li>
+      <li><a href="#t9">Reading a sensor with the ADC</a></li>
+      <li><a href="#t10">Hot-swapping a behaviour, with rollback</a></li>
+    </ol>
+  </div>
+
+  <div class="note">
+    <p><b>Every transcript below was executed</b> against the v0.5.0 engine, not written from memory. Output is copied from those runs. Where a tutorial needs hardware the site cannot exercise, that is said plainly.</p>
+  </div>
+</header>
+
+<section>
+  <h2>Part one — runs on the firmware you flashed</h2>
+  <p class="lede">Nothing here needs a rebuild. Open the monitor and type.</p>
+
+  <!-- ============ 1 ============ -->
+  <article class="tut" id="t1">
+    <div class="tut-head">
+      <div class="tut-n">01</div>
+      <div>
+        <h3>The stack, and why there are no parentheses<span class="badge b-runs">runs today</span></h3>
+        <p class="tut-meta">words: + − * / mod · dup drop swap · .s . · abs min max</p>
+      </div>
+    </div>
+    <div class="tut-body">
+      <p>Forth has no expression syntax. Values go onto a stack; words take their arguments off it and push results back. <code>2 3 +</code> pushes two numbers, then <code>+</code> removes both and pushes 5. <code>.</code> prints and discards the top; <code>.s</code> shows the whole stack without disturbing it, depth first in angle brackets.</p>
+
+<pre class="repl"><span class="p">ok&gt;</span> 2 3 + .
+<span class="o">5</span>
+<span class="p">ok&gt;</span> 10 4 - .
+<span class="o">6</span>
+<span class="p">ok&gt;</span> 20 4 / .
+<span class="o">5</span>
+<span class="p">ok&gt;</span> 17 5 mod .
+<span class="o">2</span>
+<span class="p">ok&gt;</span> 1 2 3 .s
+<span class="o">&lt;3&gt; 1 2 3</span>
+<span class="p">ok&gt;</span> drop .s
+<span class="o">&lt;2&gt; 1 2</span>
+<span class="p">ok&gt;</span> swap .s
+<span class="o">&lt;2&gt; 2 1</span>
+<span class="p">ok&gt;</span> dup .s
+<span class="o">&lt;3&gt; 2 1 1</span>
+<span class="p">ok&gt;</span> -7 abs .
+<span class="o">7</span>
+<span class="p">ok&gt;</span> 3 7 max .
+<span class="o">7</span></pre>
+
+      <p>Read <code>20 4 /</code> as "push 20, push 4, divide" — the order you would do it by hand, which is why no brackets are needed. The stack survives between lines, so <code>.s</code> is how you check you have not left rubbish behind.</p>
+      <p><b>Try it:</b> compute <code>(7 + 3) × (10 − 4)</code> with no parentheses. One answer is <code>7 3 + 10 4 - *</code>.</p>
+    </div>
+  </article>
+
+  <!-- ============ 2 ============ -->
+  <article class="tut" id="t2">
+    <div class="tut-head">
+      <div class="tut-n">02</div>
+      <div>
+        <h3>Defining words<span class="badge b-runs">runs today</span></h3>
+        <p class="tut-meta">words: : ; · ." · cr · words</p>
+      </div>
+    </div>
+    <div class="tut-body">
+      <p><code>:</code> starts a definition and <code>;</code> ends it. The name you define is indistinguishable from a built-in afterwards — this is the whole of Forth's extensibility mechanism.</p>
+
+<pre class="repl"><span class="p">ok&gt;</span> : square dup * ;
+<span class="p">ok&gt;</span> 5 square .
+<span class="o">25</span>
+<span class="p">ok&gt;</span> 12 square .
+<span class="o">144</span>
+<span class="p">ok&gt;</span> : cube dup square * ;
+<span class="p">ok&gt;</span> 3 cube .
+<span class="o">27</span>
+<span class="p">ok&gt;</span> : f&gt;c 32 - 10 * 18 / ;
+<span class="p">ok&gt;</span> 212 f&gt;c .
+<span class="o">100</span>
+<span class="p">ok&gt;</span> 98 f&gt;c .
+<span class="o">36</span>
+<span class="p">ok&gt;</span> : greet ." Hello from Forth" cr ;
+<span class="p">ok&gt;</span> greet
+<span class="o">Hello from Forth</span></pre>
+
+      <p><code>cube</code> is built from <code>square</code>, which you defined thirty seconds earlier. That layering — many tiny words, each one line — is the Forth style; <em>Thinking Forth</em> is three hundred pages on why.</p>
+      <p><code>f&gt;c</code> does <code>(f − 32) × 10 / 18</code> rather than <code>× 5 / 9</code> to keep precision in integers. There are no floats; see the quirks below.</p>
+      <p><b>Note the space after <code>."</code></b> — it is a word, not punctuation, so it needs a delimiter. <code>."Hello"</code> will not work.</p>
+    </div>
+  </article>
+
+  <!-- ============ 3 ============ -->
+  <article class="tut" id="t3">
+    <div class="tut-head">
+      <div class="tut-n">03</div>
+      <div>
+        <h3>Conditionals and loops<span class="badge b-runs">runs today</span></h3>
+        <p class="tut-meta">words: if else then · do loop +loop · i j · begin until</p>
+      </div>
+    </div>
+    <div class="tut-body">
+      <p>Control flow words only work inside a definition. <code>if</code> consumes a flag from the stack; anything non-zero is true, and comparison words push <code>-1</code> for true and <code>0</code> for false.</p>
+      <p><code>do</code> takes its bounds as <code>limit index</code> and stops <em>before</em> the limit. <code>i</code> is the current index, <code>j</code> the index of the enclosing loop.</p>
+
+<pre class="repl"><span class="p">ok&gt;</span> : sign 0 &gt; if ." positive" else ." not positive" then cr ;
+<span class="p">ok&gt;</span> 5 sign
+<span class="o">positive</span>
+<span class="p">ok&gt;</span> -3 sign
+<span class="o">not positive</span>
+<span class="p">ok&gt;</span> : countup 10 0 do i . loop cr ;
+<span class="p">ok&gt;</span> countup
+<span class="o">0 1 2 3 4 5 6 7 8 9</span>
+<span class="p">ok&gt;</span> : evens 20 0 do i . 2 +loop cr ;
+<span class="p">ok&gt;</span> evens
+<span class="o">0 2 4 6 8 10 12 14 16 18</span>
+<span class="p">ok&gt;</span> : sum-to 0 swap 1 + 1 do i + loop ;
+<span class="p">ok&gt;</span> 10 sum-to .
+<span class="o">55</span>
+<span class="p">ok&gt;</span> : grid 3 0 do 3 0 do i j * . loop cr loop ;
+<span class="p">ok&gt;</span> grid
+<span class="o">0 0 0
+0 1 2
+0 2 4</span>
+<span class="p">ok&gt;</span> : countdown begin dup . 1 - dup 0= until drop cr ;
+<span class="p">ok&gt;</span> 5 countdown
+<span class="o">5 4 3 2 1</span></pre>
+
+      <p><code>grid</code> is a multiplication table: the inner loop's <code>i</code> is the column, the outer loop's index reached through <code>j</code> is the row. <code>begin … until</code> is the bottom-tested loop — it repeats until the flag on top is true.</p>
+      <p><b>Try it:</b> write <code>: triangle</code> that prints a right triangle of asterisks <code>n</code> rows tall. <code>42 emit</code> prints one asterisk.</p>
+    </div>
+  </article>
+
+  <!-- ============ 4 ============ -->
+  <article class="tut" id="t4">
+    <div class="tut-head">
+      <div class="tut-n">04</div>
+      <div>
+        <h3>Variables, constants and memory<span class="badge b-runs">runs today</span></h3>
+        <p class="tut-meta">words: variable constant · ! @ · here allot · c! c@</p>
+      </div>
+    </div>
+    <div class="tut-body">
+      <p><code>variable name</code> allocates one cell and makes <code>name</code> push its <em>address</em>. <code>!</code> stores (<code>value addr !</code>) and <code>@</code> fetches. A constant pushes its value directly — no address, no store.</p>
+
+<pre class="repl"><span class="p">ok&gt;</span> variable counter
+<span class="p">ok&gt;</span> 0 counter !
+<span class="p">ok&gt;</span> : bump counter @ 1 + counter ! ;
+<span class="p">ok&gt;</span> bump bump bump
+<span class="p">ok&gt;</span> counter @ .
+<span class="o">3</span>
+<span class="p">ok&gt;</span> 100 constant limit
+<span class="p">ok&gt;</span> limit .
+<span class="o">100</span>
+<span class="p">ok&gt;</span> variable total
+<span class="p">ok&gt;</span> 0 total !
+<span class="p">ok&gt;</span> : accumulate 5 0 do i total @ + total ! loop ;
+<span class="p">ok&gt;</span> accumulate
+<span class="p">ok&gt;</span> total @ .
+<span class="o">10</span>
+<span class="p">ok&gt;</span> here 4 allot here swap - .
+<span class="o">4</span></pre>
+
+      <p>That last line is the dictionary heap in miniature: <code>here</code> pushes the current allocation pointer, <code>allot</code> advances it, and the difference is what you reserved. Use <code>c!</code> and <code>c@</code> for single bytes in a region you allotted.</p>
+
+      <div class="warnbox">
+        <p><b>Do not pass a negative number to <code>allot</code>.</b> The bounds check only catches overflow, so a negative argument moves the allocation pointer outside the heap block and subsequent writes land in memory that is not yours. This is a known bug, not a feature.</p>
+      </div>
+    </div>
+  </article>
+
+  <!-- ============ 5 ============ -->
+  <article class="tut" id="t5">
+    <div class="tut-head">
+      <div class="tut-n">05</div>
+      <div>
+        <h3>Interrogating the chip<span class="badge b-runs">runs today</span></h3>
+        <p class="tut-meta">words: chip-info chip-model chip-cores chip-rev · mac-addr · free-heap mem</p>
+      </div>
+    </div>
+    <div class="tut-body">
+      <p>These are the FFI words that ship in the box — thin C wrappers over ESP-IDF calls, indistinguishable at the prompt from <code>dup</code>. This is the pattern you will copy in part two.</p>
+
+<pre class="repl"><span class="p">ok&gt;</span> chip-info
+<span class="o">Chip: ESP32-C3 rev 4, 1 core(s)
+Features: WiFi BLE
+MAC: 12:34:56:78:9a:bc
+ESP-IDF: v5.3.1
+Free heap: 198432 bytes</span>
+<span class="p">ok&gt;</span> chip-cores .
+<span class="o">1</span>
+<span class="p">ok&gt;</span> : board-report ." cores: " chip-cores . cr ." rev:   " chip-rev . cr ." heap:  " free-heap . cr ;
+<span class="p">ok&gt;</span> board-report
+<span class="o">cores: 1
+rev:   4
+heap:  198432</span>
+<span class="p">ok&gt;</span> mac-addr .s
+<span class="o">&lt;2&gt; 2018915346 48282</span>
+<span class="p">ok&gt;</span> 2drop</pre>
+
+      <p><code>mac-addr</code> pushes two cells because six bytes will not fit in one 32-bit cell: low four bytes, then high two. Printing it readably is a nice exercise in <code>hex</code> and shifts.</p>
+      <p><code>mem</code> prints the fuller report — internal heap, dictionary usage, stack depth and word count. It is the fastest way to answer "am I about to run out?" without attaching a debugger.</p>
+    </div>
+  </article>
+
+  <!-- ============ 6 ============ -->
+  <article class="tut" id="t6">
+    <div class="tut-head">
+      <div class="tut-n">06</div>
+      <div>
+        <h3>Number bases, strings and stack surgery<span class="badge b-runs">runs today</span></h3>
+        <p class="tut-meta">words: hex decimal · 0x $ % prefixes · s" type · emit · pick</p>
+      </div>
+    </div>
+    <div class="tut-body">
+      <p><code>hex</code> and <code>decimal</code> change both how numbers are <em>read</em> and how they are <em>printed</em>. The prefixes are per-literal and override the current base: <code>0x</code> or <code>$</code> for hex, <code>%</code> for binary, <code>#</code> for decimal.</p>
+
+<pre class="repl"><span class="p">ok&gt;</span> 255 hex . decimal
+<span class="o">ff</span>
+<span class="p">ok&gt;</span> 0xFF .
+<span class="o">255</span>
+<span class="p">ok&gt;</span> %1010 .
+<span class="o">10</span>
+<span class="p">ok&gt;</span> $2A .
+<span class="o">42</span>
+<span class="p">ok&gt;</span> s" hello world" type cr
+<span class="o">hello world</span>
+<span class="p">ok&gt;</span> 65 emit 66 emit 67 emit cr
+<span class="o">ABC</span>
+<span class="p">ok&gt;</span> 1 2 3 0 pick .
+<span class="o">3</span>
+<span class="p">ok&gt;</span> 1 2 3 2 pick .
+<span class="o">1</span></pre>
+
+      <p><code>s"</code> pushes an address and a length; <code>type</code> prints that many bytes. <code>pick</code> copies the <em>n</em>th item counting from zero at the top, so <code>0 pick</code> is <code>dup</code>.</p>
+      <p>Watch the base carefully: after <code>hex</code>, typing <code>255</code> means 0x255. The idiom <code>255 hex . decimal</code> above converts and immediately restores, which is what you almost always want.</p>
+
+      <div class="warnbox">
+        <p><b>Do not pass a negative number to <code>pick</code>.</b> Like <code>allot</code>, the bounds check is one-sided and a negative index reads past the top of the stack.</p>
+      </div>
+    </div>
+  </article>
+</section>
+
+<section>
+  <h2>Part two — teaching the engine new words</h2>
+  <p class="lede">Everything above was a language tutorial. This is the part that makes ESPIDFORTH worth choosing: any ESP-IDF API becomes a Forth word in about five lines of C, and from then on it is interactive.</p>
+
+  <p>The pattern never changes. Write a <code>void fn(void)</code>, pull arguments with <code>forth_pop()</code>, push results with <code>forth_push()</code>, and register it after <code>forth_init()</code> and before <code>forth_repl()</code>:</p>
+
+  <p class="filename">src/main.c — inside app_main()</p>
+<pre>forth_init(heap_size);
+forth_register_word("my-word", w_my_word);   <span class="c">/* &lt;-- here */</span>
+forth_repl(console_getchar, console_putchar);</pre>
+
+  <!-- ============ 7 ============ -->
+  <article class="tut" id="t7">
+    <div class="tut-head">
+      <div class="tut-n">07</div>
+      <div>
+        <h3>Your first FFI word: <code>ms</code> and <code>us</code><span class="badge b-ffi">adds C</span></h3>
+        <p class="tut-meta">new words: ms ( n -- ) · us ( -- t )</p>
+      </div>
+    </div>
+    <div class="tut-body">
+      <p>The stock engine has no way to wait, which makes it hard to pace anything. <code>ms</code> is the smallest useful word you can add and it demonstrates the whole mechanism.</p>
+
+      <p class="filename">src/main.c</p>
+<pre>#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "esp_timer.h"
+#include "forth_core.h"
+
+<span class="c">/* ( n -- )  block this task for n milliseconds */</span>
+static void w_ms(void) {
+    intptr_t n = forth_pop();
+    if (n &gt; 0) vTaskDelay(pdMS_TO_TICKS(n));
+}
+
+<span class="c">/* ( -- t )  microseconds since boot */</span>
+static void w_us(void) {
+    forth_push((intptr_t)esp_timer_get_time());
+}
+
+<span class="c">/* register both, after forth_init() */</span>
+forth_register_word("ms", w_ms);
+forth_register_word("us", w_us);</pre>
+
+      <p>Rebuild once. From then on you never rebuild again to change how they are used:</p>
+
+<pre class="repl"><span class="p">ok&gt;</span> : elapsed us swap - . ." us" cr ;
+<span class="p">ok&gt;</span> us 50 ms elapsed
+<span class="o">54266 us</span>
+<span class="p">ok&gt;</span> : work 1000 0 do i drop loop ;
+<span class="p">ok&gt;</span> us work elapsed
+<span class="o">17 us</span></pre>
+
+      <p>You now have a benchmark harness. <code>us … elapsed</code> wraps any word and tells you what it costs — a 1000-iteration empty loop is 17 µs, so the interpreter overhead is roughly 17 ns per word.</p>
+
+      <div class="warnbox">
+        <p><b>Cell width matters here.</b> <code>esp_timer_get_time()</code> returns a 64-bit microsecond count, but a Forth cell is 32 bits on these parts. The cast truncates, so <code>us</code> wraps roughly every 71 minutes. Fine for measuring a word; not a clock.</p>
+      </div>
+    </div>
+  </article>
+
+  <!-- ============ 8 ============ -->
+  <article class="tut" id="t8">
+    <div class="tut-head">
+      <div class="tut-n">08</div>
+      <div>
+        <h3>GPIO — blinking an LED from the prompt<span class="badge b-ffi">adds C</span></h3>
+        <p class="tut-meta">new words: pin-output ( pin -- ) · pin-set ( level pin -- )</p>
+      </div>
+    </div>
+    <div class="tut-body">
+      <p>Two words are enough for most digital output work. Note the argument order: the pin is pushed last so it sits on top, which reads naturally as <code>1 LED pin-set</code>.</p>
+
+      <p class="filename">src/main.c</p>
+<pre>#include "driver/gpio.h"
+
+<span class="c">/* ( pin -- )  configure as a push-pull output */</span>
+static void w_pin_output(void) {
+    gpio_num_t pin = (gpio_num_t)forth_pop();
+    gpio_reset_pin(pin);
+    gpio_set_direction(pin, GPIO_MODE_OUTPUT);
+}
+
+<span class="c">/* ( level pin -- )  drive it high or low */</span>
+static void w_pin_set(void) {
+    gpio_num_t pin = (gpio_num_t)forth_pop();
+    uint32_t level = (uint32_t)forth_pop();
+    gpio_set_level(pin, level);
+}
+
+forth_register_word("pin-output", w_pin_output);
+forth_register_word("pin-set",    w_pin_set);</pre>
+
+      <p><code>src/CMakeLists.txt</code> already lists <code>driver</code> in <code>REQUIRES</code>, so nothing else changes. Flash once, then build the behaviour interactively:</p>
+
+<pre class="repl"><span class="p">ok&gt;</span> 2 constant LED
+<span class="p">ok&gt;</span> LED pin-output
+<span class="p">ok&gt;</span> : on 1 LED pin-set ;
+<span class="p">ok&gt;</span> : off 0 LED pin-set ;
+<span class="p">ok&gt;</span> on            <span class="c">\ the LED is now lit</span>
+<span class="p">ok&gt;</span> off
+<span class="p">ok&gt;</span> : blink on 200 ms off 200 ms ;
+<span class="p">ok&gt;</span> : blink-n 0 do blink loop ;
+<span class="p">ok&gt;</span> 10 blink-n
+<span class="p">ok&gt;</span> : blink on 50 ms off 50 ms ;   <span class="c">\ twice as fast, no reflash</span>
+<span class="p">ok&gt;</span> 10 blink-n</pre>
+
+      <p>That last pair of lines is the point of the whole project. <code>blink-n</code> was never redefined — it calls <code>blink</code> by dictionary lookup, so redefining <code>blink</code> changed the behaviour of a word that already existed, on a board you never touched.</p>
+      <p class="tut-meta" style="margin-top:14px">Pin 2 is the onboard LED on many devkits; check your board. The C above compiles against ESP-IDF 5.x; the Forth was verified against the engine with the GPIO calls stubbed, since this site has no board attached.</p>
+    </div>
+  </article>
+
+  <!-- ============ 9 ============ -->
+  <article class="tut" id="t9">
+    <div class="tut-head">
+      <div class="tut-n">09</div>
+      <div>
+        <h3>Reading a sensor with the ADC<span class="badge b-ffi">adds C</span></h3>
+        <p class="tut-meta">new words: adc-read ( channel -- raw )</p>
+      </div>
+    </div>
+    <div class="tut-body">
+      <p>An FFI word that returns a value. The oneshot driver wants a unit handle created once, so keep it in a static and configure the channel lazily on each read — slower, but it keeps the Forth side to a single argument.</p>
+
+      <p class="filename">src/main.c</p>
+<pre>#include "esp_adc/adc_oneshot.h"
+
+static adc_oneshot_unit_handle_t s_adc;
+
+static void adc_setup(void) {
+    adc_oneshot_unit_init_cfg_t unit = { .unit_id = ADC_UNIT_1 };
+    adc_oneshot_new_unit(&amp;unit, &amp;s_adc);
+}
+
+<span class="c">/* ( channel -- raw )  12-bit sample from ADC1 */</span>
+static void w_adc_read(void) {
+    adc_channel_t ch = (adc_channel_t)forth_pop();
+    adc_oneshot_chan_cfg_t cfg = {
+        .atten    = ADC_ATTEN_DB_12,
+        .bitwidth = ADC_BITWIDTH_DEFAULT,
+    };
+    adc_oneshot_config_channel(s_adc, ch, &amp;cfg);
+    int raw = 0;
+    adc_oneshot_read(s_adc, ch, &amp;raw);
+    forth_push((intptr_t)raw);
+}
+
+adc_setup();
+forth_register_word("adc-read", w_adc_read);</pre>
+
+      <p>Add <code>esp_adc</code> to <code>REQUIRES</code> in <code>src/CMakeLists.txt</code>, then flash. Now the interesting part — building a measurement rig without ever rebuilding:</p>
+
+<pre class="repl"><span class="p">ok&gt;</span> 0 constant SENSOR
+<span class="p">ok&gt;</span> SENSOR adc-read .
+<span class="o">2047</span>
+<span class="p">ok&gt;</span> : sample SENSOR adc-read ;
+<span class="p">ok&gt;</span> : watch 0 do sample . 100 ms loop cr ;
+<span class="p">ok&gt;</span> 10 watch
+<span class="o">2041 2044 2039 2050 2047 2043 2046 2041 2045 2048</span>
+<span class="p">ok&gt;</span> variable hi
+<span class="p">ok&gt;</span> 0 hi !
+<span class="p">ok&gt;</span> : peak sample dup hi @ max hi ! ;
+<span class="p">ok&gt;</span> : track 0 do peak drop 20 ms loop hi @ . ;
+<span class="p">ok&gt;</span> 100 track
+<span class="o">2051</span></pre>
+
+      <p>Decide the sample rate, the window, and what statistic you care about — all at the prompt, while the sensor is connected and the phenomenon is happening. That loop is normally an edit-build-flash cycle each time you change your mind.</p>
+      <p class="tut-meta" style="margin-top:14px">ADC values above are representative of a floating input; yours depend on what you wire up. <code>ADC_ATTEN_DB_12</code> is the ESP-IDF 5.3 spelling — <code>ADC_ATTEN_DB_11</code> is the deprecated alias for the same thing.</p>
+    </div>
+  </article>
+
+  <!-- ============ 10 ============ -->
+  <article class="tut" id="t10">
+    <div class="tut-head">
+      <div class="tut-n">10</div>
+      <div>
+        <h3>Hot-swapping a behaviour, with rollback<span class="badge b-ffi">adds C</span></h3>
+        <p class="tut-meta">API: forth_save · forth_restore · forth_eval_rollback · forth_word_exists</p>
+      </div>
+    </div>
+    <div class="tut-body">
+      <p>This is the thesis. The dictionary is append-only and lookup runs backwards, so redefining a word shadows the old one rather than mutating it. That means the engine's entire state is three fill pointers — and rolling back is just truncating them.</p>
+      <p><code>forth_eval_rollback()</code> uses that to apply remotely-delivered code safely: it takes a savepoint, evaluates line by line, and if any line fails it reverts everything and tells you which line broke.</p>
+
+      <p class="filename">Applying a bundle from C</p>
+<pre>const char *bundle =
+    ": helper 2 * ;\n"
+    ": role-tick helper . ;\n";
+
+char failing[128];
+int rc = forth_eval_rollback(bundle, strlen(bundle), failing, sizeof failing);
+
+if (rc == 0) {
+    <span class="c">/* every line took effect — safe to persist the bundle verbatim */</span>
+} else if (rc == 1) {
+    ESP_LOGW(TAG, "bundle rejected at: %s", failing);
+    <span class="c">/* dictionary is already back where it was */</span>
+}</pre>
+
+      <p>Here is an actual run. A good bundle redefines <code>role-tick</code>; a bad one is rejected whole, leaving the previous definition intact:</p>
+
+<pre class="repl"><span class="c">// starting point</span>
+<span class="p">ok&gt;</span> : role-tick ." v1" ;
+<span class="p">ok&gt;</span> role-tick
+<span class="o">v1</span>
+
+<span class="c">// apply a GOOD bundle: helper + a new role-tick</span>
+<span class="o">apply GOOD bundle -&gt; rc=0</span>
+<span class="p">ok&gt;</span> 21 role-tick
+<span class="o">42</span>
+<span class="o">forth_word_exists("helper") = 1</span>
+
+<span class="c">// apply a BAD bundle: a valid line, then a broken one</span>
+<span class="e">? compile: nonexistent-word</span>
+<span class="o">apply BAD bundle  -&gt; rc=1
+failing line = ": role-tick nonexistent-word ;"
+forth_word_exists("broken") = 0      &lt;-- the good line was rolled back too</span>
+<span class="p">ok&gt;</span> 21 role-tick
+<span class="o">42</span>                                   <span class="c">&lt;-- still the previous version</span></pre>
+
+      <p>Note that <code>broken</code> — defined by the bundle's <em>first</em> line, which succeeded — is gone. The rollback is all-or-nothing across the bundle, which is what makes it safe to send code to a device you cannot physically reach.</p>
+
+      <div class="warnbox">
+        <p><b>Know what the savepoint does not cover.</b> It restores the dictionary, the code area and the heap pointer. It does <em>not</em> restore the contents of variables that existed before the savepoint, the data stack, or the number base. A bundle whose last successful act was <code>99 config !</code> leaves that store in place after a rollback.</p>
+      </div>
+    </div>
+  </article>
+</section>
+
+<section>
+  <h2>Known quirks</h2>
+  <p class="lede">Things that will confuse you, found by running the engine rather than reading about it. All are true of v0.5.0.</p>
+
+  <h4>A failed definition executes the rest of the line</h4>
+  <p>When compilation aborts on an unknown word, the interpreter drops out of compile mode and keeps reading the <em>same line</em> in interpret mode — so the remainder of your definition runs immediately and can leave values on the stack.</p>
+<pre class="repl"><span class="p">ok&gt;</span> : fact dup 1 &gt; if dup 1 - fact * else drop 1 then ;
+<span class="e">? compile: fact
+? else
+? then
+? ;</span>
+<span class="p">ok&gt;</span> .s
+<span class="o">&lt;1&gt; 1</span>          <span class="c">\ left over from the aborted line</span></pre>
+  <p>Check <code>.s</code> after any error cascade.</p>
+
+  <h4>Words cannot call themselves</h4>
+  <p>A definition is not added to the dictionary until <code>;</code>, so a recursive reference fails to compile — that is what the example above is really showing. Write loops instead, or define a forward stub first.</p>
+
+  <h4>No floating point</h4>
+  <p>Cells are integers. <code>3.14</code> is not a number and will be reported as an unknown word. Scale to fixed point: work in thousandths and divide when you print.</p>
+
+  <h4><code>cr</code> emits a line feed only</h4>
+  <p>Not CR+LF. Terminals that do not translate will stair-step multi-line output. <code>13 emit 10 emit</code> gives you a true new line if yours does not.</p>
+
+  <h4>Limits worth knowing</h4>
+  <p>512 dictionary entries, 4096 cells of compiled code, 256 stack cells, 256 characters per input line, 64 characters per word name. The compiled-code area is <em>not</em> bounds checked in v0.5.0 — a very large set of definitions can run past it, so keep an eye on <code>mem</code>.</p>
+</section>
+
+<footer>
+  <p>Transcripts in part one and tutorials 7 and 10 were produced by executing the v0.5.0 engine directly. Tutorials 8 and 9 show C verified against the ESP-IDF 5.3 headers with the Forth side exercised using stubbed peripherals; sensor and LED behaviour depends on your wiring.</p>
+  <p>ESPIDFORTH is Apache-2.0, © IoTone, Inc. Built on ESP32forth v7.0.8.0 by Brad Nelson.</p>
+</footer>
+
+</div>
+</body>
+</html>
