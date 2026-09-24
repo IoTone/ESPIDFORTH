@@ -120,6 +120,29 @@ Or in ESP-IDF CMake:
 target_compile_definitions(your_target PRIVATE ESPIDFORTH_ENABLE_TESTS=0)
 ```
 
+### Sizing the engine (no-PSRAM boards)
+
+The dictionary, code space and stacks are static arrays. Their limits are
+`#ifndef`-guarded so a consumer can size them from the build:
+
+| Define | Default | Static cost |
+|---|---|---|
+| `MAX_WORDS` | 512 | `MAX_WORDS * (MAX_WORD_LEN + ~12)` bytes |
+| `MAX_WORD_LEN` | 64 | (per dictionary entry) |
+| `MAX_DICT_CODE` | 4096 cells | `* sizeof(cell_t)` (16 KB on 32-bit) |
+| `MAX_STACK`, `MAX_RSTACK` | 256 cells each | 1 KB each |
+| `MAX_INPUT` | 256 | one line buffer |
+
+Defaults total about 57 KB. A consumer that must leave room for a TLS stack on
+an ESP32-S3 without PSRAM builds with
+
+```ini
+build_flags = -DMAX_WORDS=160 -DMAX_WORD_LEN=24 -DMAX_DICT_CODE=1536
+```
+
+for about 14 KB (measured in an Arduino-esp32 host project, 2026-09). The
+`forth_init()` heap size is separate and is malloc'd.
+
 ## Targets
 
 Tested on ESP32, ESP32-S3, ESP32-C3, and ESP32-C6 with ESP-IDF >= 5.0.
